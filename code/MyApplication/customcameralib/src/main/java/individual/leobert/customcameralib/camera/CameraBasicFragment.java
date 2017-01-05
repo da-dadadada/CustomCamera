@@ -54,6 +54,12 @@ public class CameraBasicFragment extends Fragment implements SurfaceHolder.Callb
     @Override
     public void onViewCreated(View view, Bundle savedInstanceState) {
         contentView = view;
+        view.findViewById(R.id.picture).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                CameraManager.get().doTakePicture();
+            }
+        });
     }
 
     @Override

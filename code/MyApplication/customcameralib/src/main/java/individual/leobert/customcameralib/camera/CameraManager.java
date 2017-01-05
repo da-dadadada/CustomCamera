@@ -174,6 +174,24 @@ public final class CameraManager {
     Camera.PictureCallback mJpegPictureCallback = new Camera.PictureCallback() {
         public void onPictureTaken(byte[] data, Camera camera) {
             Log.i(TAG, "myJpegCallback:onPictureTaken...");
+
+//            Bitmap b = null;
+            if(null != data){
+//                b = BitmapFactory.decodeByteArray(data, 0, data.length);//data是字节数据，将其解析成位图
+                camera.stopPreview();
+                previewing = false;
+            }
+            //保存图片到sdcard
+//            if(null != b)
+//            {
+//                //设置FOCUS_MODE_CONTINUOUS_VIDEO)之后，myParam.set("rotation", 90)失效。
+//                //图片竟然不能旋转了，故这里要旋转下
+//                Bitmap rotaBitmap = ImageUtil.getRotateBitmap(b, 90.0f);
+//                FileUtil.saveBitmap(rotaBitmap);
+//            }
+            //再次进入预览
+            camera.startPreview();
+            previewing = true;
         }
     };
 
