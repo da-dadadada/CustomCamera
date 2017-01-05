@@ -116,8 +116,14 @@ public class CameraBasicFragment extends Fragment implements SurfaceHolder.Callb
     protected void initCamera(SurfaceHolder surfaceHolder) {
         try {
             CameraManager.get().openDriver(surfaceHolder);
-
         } catch (IOException | RuntimeException ioe) {
+            Log.e("lmsg","can not open camera\r"+ioe.toString());
+
+            // TODO: 2017/1/5
+            // some oem-system like colorOS made by oppo realized the permission
+            // authorization by themselves, we can only get a runtimeException when
+            // we run into the bad scene that user refuse authorization
+
             ioe.printStackTrace();
             return;
         }

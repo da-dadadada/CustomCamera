@@ -436,11 +436,11 @@ public class Camera2BasicFragment extends Fragment
         mTextureView = (AutoFitTextureView) view.findViewById(R.id.texture);
     }
 
-    @Override
-    public void onActivityCreated(Bundle savedInstanceState) {
-        super.onActivityCreated(savedInstanceState);
-        mFile = new File(getActivity().getExternalFilesDir(null), "pic.jpg");
-    }
+//    @Override
+//    public void onActivityCreated(Bundle savedInstanceState) {
+//        super.onActivityCreated(savedInstanceState);
+//        mFile = new File(getActivity().getExternalFilesDir(null),"pic.jpg");
+//    }
 
     @Override
     public void onResume() {
@@ -890,10 +890,11 @@ public class Camera2BasicFragment extends Fragment
 
     @Override
     public void onClick(View view) {
-       final int id  = view.getId();
+        final int id = view.getId();
         if (id == R.id.picture) {
+            mFile = new File(getActivity().getExternalFilesDir(null), System.currentTimeMillis() + ".jpg");
             takePicture();
-        } else if (id == R.id.info ) {
+        } else if (id == R.id.info) {
             Activity activity = getActivity();
             if (null != activity) {
                 new AlertDialog.Builder(activity)
