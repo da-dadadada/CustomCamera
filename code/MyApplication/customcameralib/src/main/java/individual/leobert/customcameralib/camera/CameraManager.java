@@ -1,6 +1,8 @@
 package individual.leobert.customcameralib.camera;
 
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Point;
 import android.graphics.Rect;
 import android.hardware.Camera;
@@ -10,6 +12,10 @@ import android.util.Log;
 import android.view.SurfaceHolder;
 
 import java.io.IOException;
+import java.lang.ref.WeakReference;
+
+import individual.leobert.customcameralib.util.FileUtil;
+import individual.leobert.customcameralib.util.ImageUtil;
 
 
 /**
@@ -18,7 +24,8 @@ import java.io.IOException;
  * @author leobert.lan
  * @version 1.0
  */
-public final class CameraManager {
+@SuppressWarnings("deprecation")
+final class CameraManager {
     private static CameraManager cameraManager;
 
     private static final String TAG = CameraManager.class.getSimpleName();
@@ -44,7 +51,7 @@ public final class CameraManager {
     private final AutoFocusCallback autoFocusCallback;
     private Parameters parameter;
 
-    public static void init(Context context) {
+    static void init(Context context) {
         if (cameraManager == null) {
             cameraManager = new CameraManager(context);
         }
@@ -54,15 +61,17 @@ public final class CameraManager {
         return cameraManager;
     }
 
+    private final WeakReference<Context> contextWeakRef;
+
     private CameraManager(Context context) {
         this.configManager = new CameraConfigurationManager(context);
-
+        contextWeakRef = new WeakReference<>(context);
         useOneShotPreviewCallback = SDK_INT > 3;
         previewCallback = new PreviewCallback(configManager, useOneShotPreviewCallback);
         autoFocusCallback = new AutoFocusCallback();
     }
 
-    public void openDriver(SurfaceHolder holder) throws IOException {
+    void openDriver(SurfaceHolder holder) throws IOException {
         if (camera == null) {
             camera = Camera.open();
             if (camera == null) {
@@ -72,12 +81,10 @@ public final class CameraManager {
 
             if (!initialized) {
                 initialized = true;
-                // TODO: 2017/1/3 密度适配
                 Rect rect = holder.getSurfaceFrame();
-                Point point = new Point(rect.right-rect.left,rect.bottom-rect.top);
+                Point point = new Point(rect.right - rect.left, rect.bottom - rect.top);
 
-
-                configManager.initFromCameraParameters(camera,point);
+                configManager.initFromCameraParameters(camera, point);
             }
             configManager.setDesiredCameraParameters(camera);
             FlashlightManager.enableFlashlight();
@@ -149,14 +156,14 @@ public final class CameraManager {
         }
     }
 
-    public void doTakePicture(){
-        if(camera != null){
-            camera.takePicture(mShutterCallback, null, mJpegPictureCallback);
+    public void doTakePicture(OnPictureTakenListener onPictureTakenListener) {
+        if (camera != null) {
+            camera.takePicture(mShutterCallback, null, new MPictureCallback2(onPictureTakenListener));
         }
     }
 
     /*为了实现拍照的快门声音及拍照保存照片需要下面三个回调变量*/
-    Camera.ShutterCallback mShutterCallback = new Camera.ShutterCallback() {
+    private Camera.ShutterCallback mShutterCallback = new Camera.ShutterCallback() {
         public void onShutter() {
             Log.i(TAG, "myShutterCallback:onShutter...");
         }
@@ -171,17 +178,17 @@ public final class CameraManager {
 //        }
 //    };
 
-    Camera.PictureCallback mJpegPictureCallback = new Camera.PictureCallback() {
-        public void onPictureTaken(byte[] data, Camera camera) {
-            Log.i(TAG, "myJpegCallback:onPictureTaken...");
-
+//    private Camera.PictureCallback mJpegPictureCallback = new Camera.PictureCallback() {
+//        public void onPictureTaken(byte[] data, Camera camera) {
+//            Log.i(TAG, "myJpegCallback:onPictureTaken...");
+//
 //            Bitmap b = null;
-            if(null != data){
+//            if(null != data){
 //                b = BitmapFactory.decodeByteArray(data, 0, data.length);//data是字节数据，将其解析成位图
-                camera.stopPreview();
-                previewing = false;
-            }
-            //保存图片到sdcard
+//                camera.stopPreview();
+//                previewing = false;
+//            }
+//            //保存图片到sdcard
 //            if(null != b)
 //            {
 //                //设置FOCUS_MODE_CONTINUOUS_VIDEO)之后，myParam.set("rotation", 90)失效。
@@ -189,10 +196,57 @@ public final class CameraManager {
 //                Bitmap rotaBitmap = ImageUtil.getRotateBitmap(b, 90.0f);
 //                FileUtil.saveBitmap(rotaBitmap);
 //            }
+//            //再次进入预览
+//            camera.startPreview();
+//            previewing = true;
+//        }
+//    };
+
+    private static class MPictureCallback2 implements Camera.PictureCallback {
+
+        private final OnPictureTakenListener onPictureTakenListener;
+
+        MPictureCallback2(OnPictureTakenListener onPictureTakenListener) {
+            if (onPictureTakenListener == null) {
+                this.onPictureTakenListener = OnPictureTakenListener.defaultListener;
+            } else {
+                this.onPictureTakenListener = onPictureTakenListener;
+            }
+        }
+
+        private Context getDelegateContext() {
+            CameraManager manager = CameraManager.get();
+            return manager.contextWeakRef.get();
+        }
+
+        @Override
+        public void onPictureTaken(byte[] bytes, Camera camera) {
+            Log.i(TAG, "myJpegCallback:onPictureTaken...");
+
+            Bitmap b = null;
+            if (null != bytes) {
+                b = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+                camera.stopPreview();
+                CameraManager.get().previewing = false;
+            } else {
+               onPictureTakenListener.onSaveError();
+            }
+
+            //保存图片到sdcard
+            if (null != b) {
+                if (getDelegateContext() == null) {
+                    onPictureTakenListener.onSaveError();
+                } else {
+                    //设置FOCUS_MODE_CONTINUOUS_VIDEO)之后，myParam.set("rotation", 90)失效。
+                    //图片竟然不能旋转了，故这里要旋转下
+                    Bitmap rotaBitmap = ImageUtil.getRotateBitmap(b, 90.0f);
+                    FileUtil.saveBitmap(getDelegateContext(),rotaBitmap,onPictureTakenListener);
+                }
+            }
             //再次进入预览
             camera.startPreview();
-            previewing = true;
+            CameraManager.get().previewing = true;
         }
-    };
+    }
 
 }

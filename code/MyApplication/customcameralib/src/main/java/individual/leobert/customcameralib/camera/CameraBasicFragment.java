@@ -3,6 +3,7 @@ package individual.leobert.customcameralib.camera;
 
 import android.app.Fragment;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
@@ -18,7 +19,7 @@ import individual.leobert.customcameralib.R;
  * Use the {@link CameraBasicFragment#newInstance} factory method to
  * create an instance of this fragment.
  */
-public class CameraBasicFragment extends Fragment implements SurfaceHolder.Callback {
+public class CameraBasicFragment extends Fragment implements SurfaceHolder.Callback, OnPictureTakenListener {
 
     protected boolean hasSurface;
 
@@ -51,13 +52,26 @@ public class CameraBasicFragment extends Fragment implements SurfaceHolder.Callb
 
     private View contentView;
 
+    private static final String TAG = CameraBasicFragment.class.getSimpleName();
+
+
+    @Override
+    public void onPictureSaved(String filePath) {
+        Log.d(TAG, "onPictureSaved" + filePath);
+    }
+
+    @Override
+    public void onSaveError() {
+        Log.e(TAG, "onPictureSave error");
+    }
+
     @Override
     public void onViewCreated(View view, Bundle savedInstanceState) {
         contentView = view;
         view.findViewById(R.id.picture).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                CameraManager.get().doTakePicture();
+                CameraManager.get().doTakePicture(CameraBasicFragment.this);
             }
         });
     }
@@ -129,7 +143,6 @@ public class CameraBasicFragment extends Fragment implements SurfaceHolder.Callb
         }
 
     }
-
 
 
     @Override
