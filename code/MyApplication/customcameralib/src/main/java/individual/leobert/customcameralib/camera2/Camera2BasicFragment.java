@@ -75,7 +75,7 @@ import java.util.concurrent.TimeUnit;
 
 import individual.leobert.customcameralib.R;
 
-@TargetApi(Build.VERSION_CODES.M)
+@TargetApi(Build.VERSION_CODES.LOLLIPOP)
 public class Camera2BasicFragment extends Fragment
         implements View.OnClickListener, FragmentCompat.OnRequestPermissionsResultCallback {
 
