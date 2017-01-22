@@ -19,12 +19,8 @@ package individual.leobert.customcameralib.camera2;
 import android.Manifest;
 import android.annotation.TargetApi;
 import android.app.Activity;
-import android.app.AlertDialog;
-import android.app.Dialog;
-import android.app.DialogFragment;
 import android.app.Fragment;
 import android.content.Context;
-import android.content.DialogInterface;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.ImageFormat;
@@ -42,8 +38,11 @@ import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.StreamConfigurationMap;
-import android.media.Image;
+import android.media.AudioAttributes;
 import android.media.ImageReader;
+import android.media.Ringtone;
+import android.media.RingtoneManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -62,9 +61,6 @@ import android.view.ViewGroup;
 import android.widget.Toast;
 
 import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -77,7 +73,7 @@ import individual.leobert.customcameralib.R;
 
 @TargetApi(Build.VERSION_CODES.LOLLIPOP)
 public class Camera2BasicFragment extends Fragment
-        implements View.OnClickListener, FragmentCompat.OnRequestPermissionsResultCallback {
+        implements View.OnClickListener, FragmentCompat.OnRequestPermissionsResultCallback, Camera2Constants {
 
     /**
      * Conversion from screen rotation to JPEG orientation.
@@ -98,40 +94,6 @@ public class Camera2BasicFragment extends Fragment
      */
     private static final String TAG = "Camera2BasicFragment";
 
-    /**
-     * Camera state: Showing camera preview.
-     */
-    private static final int STATE_PREVIEW = 0;
-
-    /**
-     * Camera state: Waiting for the focus to be locked.
-     */
-    private static final int STATE_WAITING_LOCK = 1;
-
-    /**
-     * Camera state: Waiting for the exposure to be precapture state.
-     */
-    private static final int STATE_WAITING_PRECAPTURE = 2;
-
-    /**
-     * Camera state: Waiting for the exposure state to be something other than precapture.
-     */
-    private static final int STATE_WAITING_NON_PRECAPTURE = 3;
-
-    /**
-     * Camera state: Picture was taken.
-     */
-    private static final int STATE_PICTURE_TAKEN = 4;
-
-    /**
-     * Max preview width that is guaranteed by Camera2 API
-     */
-    private static final int MAX_PREVIEW_WIDTH = 1920;
-
-    /**
-     * Max preview height that is guaranteed by Camera2 API
-     */
-    private static final int MAX_PREVIEW_HEIGHT = 1080;
 
     /**
      * {@link TextureView.SurfaceTextureListener} handles several lifecycle events on a
@@ -389,12 +351,16 @@ public class Camera2BasicFragment extends Fragment
     private static Size chooseOptimalSize(Size[] choices, int textureViewWidth,
                                           int textureViewHeight, int maxWidth, int maxHeight, Size aspectRatio) {
 
+//        Log.d(TAG, "choices:\r" + Arrays.asList(choices).toString());
+//        Log.i(TAG, "aspectRatio:\r" + aspectRatio);
+
         // Collect the supported resolutions that are at least as big as the preview Surface
         List<Size> bigEnough = new ArrayList<>();
         // Collect the supported resolutions that are smaller than the preview Surface
         List<Size> notBigEnough = new ArrayList<>();
-        int w = aspectRatio.getWidth();
-        int h = aspectRatio.getHeight();
+        //忽略一些奇特的相机的不严格比例
+        int w = aspectRatio.getWidth() / 10;
+        int h = aspectRatio.getHeight() / 10;
         for (Size option : choices) {
             if (option.getWidth() <= maxWidth && option.getHeight() <= maxHeight &&
                     option.getHeight() == option.getWidth() * h / w) {
@@ -405,7 +371,18 @@ public class Camera2BasicFragment extends Fragment
                     notBigEnough.add(option);
                 }
             }
+//            else {
+//                Log.d(TAG, "not aspect:" + option);
+//                StringBuilder stringBuilder = new StringBuilder();
+//                stringBuilder.append("reason:").append(option.getWidth() <= maxWidth)
+//                        .append(option.getHeight() <= maxHeight).append(
+//                        option.getHeight() == option.getWidth() * h / w);
+//                Log.d(TAG, stringBuilder.toString());
+//            }
         }
+
+//        Log.d(TAG, "big enough:\r" + bigEnough.toString());
+//        Log.d(TAG, "not big enough:\r" + notBigEnough.toString());
 
         // Pick the smallest of those big enough. If there is no one big enough, pick the
         // largest of those not big enough.
@@ -423,10 +400,31 @@ public class Camera2BasicFragment extends Fragment
         return new Camera2BasicFragment();
     }
 
+    private Ringtone ringtone;
+
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
+        ringtone = RingtoneManager.getRingtone(getActivity(),
+                Uri.parse("file:///system/media/audio/ui/camera_click.ogg"));
+        if (ringtone != null) {
+            AudioAttributes.Builder attr = new AudioAttributes.Builder();
+            attr.setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION);
+            ringtone.setAudioAttributes(attr.build());
+        }
         return inflater.inflate(R.layout.fragment_camera2_basic, container, false);
+    }
+
+    /**
+     * 播放系统的拍照的声音
+     */
+    public void displayShootSound() {
+        if (ringtone != null) {
+            ringtone.stop();
+            ringtone.play();
+        } else {
+            Log.e(TAG, "ringtone is null");
+        }
     }
 
     @Override
@@ -445,6 +443,8 @@ public class Camera2BasicFragment extends Fragment
     public void onResume() {
         super.onResume();
         startBackgroundThread();
+
+        Log.e(TAG, "onResume");
 
         // When the screen is turned off and turned back on, the SurfaceTexture is already
         // available, and "onSurfaceTextureAvailable" will not be called. In that case, we can open
@@ -465,20 +465,32 @@ public class Camera2BasicFragment extends Fragment
     }
 
     private void requestCameraPermission() {
+        Log.i(TAG, "request Camera Permission");
+        if (!needCheckPermissionOnResume) {
+            needCheckPermissionOnResume = true;
+            return;
+        }
         if (FragmentCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.CAMERA)) {
-            new ConfirmationDialog().show(getChildFragmentManager(), FRAGMENT_DIALOG);
+            Dialogs.ConfirmationDialog.newInstance(REQUEST_CAMERA_PERMISSION)
+                    .show(getChildFragmentManager(), FRAGMENT_DIALOG);
         } else {
+            // TODO: 2017/1/22 may bug occurs
             FragmentCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA},
                     REQUEST_CAMERA_PERMISSION);
         }
     }
 
+    private boolean needCheckPermissionOnResume = true;
+
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
                                            @NonNull int[] grantResults) {
+        Log.d(TAG, "onRequestPermissionsResult");
         if (requestCode == REQUEST_CAMERA_PERMISSION) {
             if (grantResults.length != 1 || grantResults[0] != PackageManager.PERMISSION_GRANTED) {
-                ErrorDialog.newInstance(getString(R.string.request_permission))
+                Log.e(TAG, "onRequestPermissionsResult failure");
+                needCheckPermissionOnResume = false;
+                Dialogs.ErrorDialog.newInstance(getString(R.string.request_permission))
                         .show(getChildFragmentManager(), FRAGMENT_DIALOG);
             }
         } else {
@@ -572,6 +584,7 @@ public class Camera2BasicFragment extends Fragment
                 mPreviewSize = chooseOptimalSize(map.getOutputSizes(SurfaceTexture.class),
                         rotatedPreviewWidth, rotatedPreviewHeight, maxPreviewWidth,
                         maxPreviewHeight, largest);
+                Log.i(TAG, "preview size:" + mPreviewSize.toString());
 
                 // We fit the aspect ratio of TextureView to the size of preview we picked.
                 int orientation = getResources().getConfiguration().orientation;
@@ -595,7 +608,7 @@ public class Camera2BasicFragment extends Fragment
         } catch (NullPointerException e) {
             // Currently an NPE is thrown when the Camera2API is used but not supported on the
             // device this code runs.
-            ErrorDialog.newInstance(getString(R.string.camera_error))
+            Dialogs.ErrorDialog.newInstance(getString(R.string.camera_error))
                     .show(getChildFragmentManager(), FRAGMENT_DIALOG);
         }
     }
@@ -832,7 +845,7 @@ public class Camera2BasicFragment extends Fragment
             int rotation = activity.getWindowManager().getDefaultDisplay().getRotation();
             captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, getOrientation(rotation));
 
-            CameraCaptureSession.CaptureCallback CaptureCallback
+            CameraCaptureSession.CaptureCallback captureCallback
                     = new CameraCaptureSession.CaptureCallback() {
 
                 @Override
@@ -840,13 +853,15 @@ public class Camera2BasicFragment extends Fragment
                                                @NonNull CaptureRequest request,
                                                @NonNull TotalCaptureResult result) {
                     showToast("Saved: " + mFile);
+                    // TODO: 2017/1/22 result explosion
                     Log.d(TAG, mFile.toString());
                     unlockFocus();
                 }
             };
 
             mCaptureSession.stopRepeating();
-            mCaptureSession.capture(captureBuilder.build(), CaptureCallback, null);
+            displayShootSound();
+            mCaptureSession.capture(captureBuilder.build(), captureCallback, null);
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
@@ -904,50 +919,6 @@ public class Camera2BasicFragment extends Fragment
     }
 
     /**
-     * Saves a JPEG {@link Image} into the specified {@link File}.
-     */
-    private static class ImageSaver implements Runnable {
-
-        /**
-         * The JPEG image
-         */
-        private final Image mImage;
-        /**
-         * The file we save the image into.
-         */
-        private final File mFile;
-
-        public ImageSaver(Image image, File file) {
-            mImage = image;
-            mFile = file;
-        }
-
-        @Override
-        public void run() {
-            ByteBuffer buffer = mImage.getPlanes()[0].getBuffer();
-            byte[] bytes = new byte[buffer.remaining()];
-            buffer.get(bytes);
-            FileOutputStream output = null;
-            try {
-                output = new FileOutputStream(mFile);
-                output.write(bytes);
-            } catch (IOException e) {
-                e.printStackTrace();
-            } finally {
-                mImage.close();
-                if (null != output) {
-                    try {
-                        output.close();
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                }
-            }
-        }
-
-    }
-
-    /**
      * Compares two {@code Size}s based on their areas.
      */
     static class CompareSizesByArea implements Comparator<Size> {
@@ -958,70 +929,5 @@ public class Camera2BasicFragment extends Fragment
             return Long.signum((long) lhs.getWidth() * lhs.getHeight() -
                     (long) rhs.getWidth() * rhs.getHeight());
         }
-
     }
-
-    /**
-     * Shows an error message dialog.
-     */
-    public static class ErrorDialog extends DialogFragment {
-
-        private static final String ARG_MESSAGE = "message";
-
-        public static ErrorDialog newInstance(String message) {
-            ErrorDialog dialog = new ErrorDialog();
-            Bundle args = new Bundle();
-            args.putString(ARG_MESSAGE, message);
-            dialog.setArguments(args);
-            return dialog;
-        }
-
-        @Override
-        public Dialog onCreateDialog(Bundle savedInstanceState) {
-            final Activity activity = getActivity();
-            return new AlertDialog.Builder(activity)
-                    .setMessage(getArguments().getString(ARG_MESSAGE))
-                    .setPositiveButton(android.R.string.ok, new DialogInterface.OnClickListener() {
-                        @Override
-                        public void onClick(DialogInterface dialogInterface, int i) {
-                            activity.finish();
-                        }
-                    })
-                    .create();
-        }
-
-    }
-
-    /**
-     * Shows OK/Cancel confirmation dialog about camera permission.
-     */
-    public static class ConfirmationDialog extends DialogFragment {
-
-        @Override
-        public Dialog onCreateDialog(Bundle savedInstanceState) {
-            final Fragment parent = getParentFragment();
-            return new AlertDialog.Builder(getActivity())
-                    .setMessage(R.string.request_permission)
-                    .setPositiveButton(android.R.string.ok, new DialogInterface.OnClickListener() {
-                        @Override
-                        public void onClick(DialogInterface dialog, int which) {
-                            FragmentCompat.requestPermissions(parent,
-                                    new String[]{Manifest.permission.CAMERA},
-                                    REQUEST_CAMERA_PERMISSION);
-                        }
-                    })
-                    .setNegativeButton(android.R.string.cancel,
-                            new DialogInterface.OnClickListener() {
-                                @Override
-                                public void onClick(DialogInterface dialog, int which) {
-                                    Activity activity = parent.getActivity();
-                                    if (activity != null) {
-                                        activity.finish();
-                                    }
-                                }
-                            })
-                    .create();
-        }
-    }
-
 }
